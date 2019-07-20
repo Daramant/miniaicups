@@ -148,13 +148,18 @@ class SimplePythonClient(Client):
 
 
 class TcpClient(Client):
-    EXECUTION_LIMIT = datetime.timedelta(seconds=MAX_EXECUTION_TIME)
-
-    def __init__(self, reader, writer):
+    def __init__(self, reader, writer, check_execution_limit):
         self.reader = reader
         self.writer = writer
         self.execution_time = datetime.timedelta()
         self.solution_id = None
+        self.check_execution_limit = check_execution_limit
+
+        if self.check_execution_limit:
+            self.request_max_time = REQUEST_MAX_TIME
+            self.execution_limit = datetime.timedelta(seconds=MAX_EXECUTION_TIME)
+        else:
+            self.request_max_time = None
 
     def save_log_to_disk(self, log, path):
         location = path.format(str(self.solution_id) + '.gz')
@@ -169,7 +174,7 @@ class TcpClient(Client):
         }
 
     async def set_solution_id(self):
-        hello_json = await asyncio.wait_for(self.reader.readline(), timeout=REQUEST_MAX_TIME)
+        hello_json = await asyncio.wait_for(self.reader.readline(), timeout=self.request_max_time)
         try:
             self.solution_id = json.loads(hello_json.decode('utf-8')).get('solution_id')
         except ValueError:
@@ -188,11 +193,12 @@ class TcpClient(Client):
     async def get_command(self):
         try:
             before = datetime.datetime.now()
-            z = await asyncio.wait_for(self.reader.readline(), timeout=REQUEST_MAX_TIME)
+            z = await asyncio.wait_for(self.reader.readline(), timeout=self.request_max_time)
             if not z:
                 raise ConnectionError('Connection closed')
+            
             self.execution_time += (datetime.datetime.now() - before)
-            if self.execution_time > self.EXECUTION_LIMIT:
+            if self.check_execution_limit and self.execution_time > self.execution_limit:
                 raise Exception('sum timeout error')
         except asyncio.TimeoutError:
             raise asyncio.TimeoutError('read timeout error')

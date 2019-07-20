@@ -34,6 +34,8 @@ SAW_SCORE = toint(os.getenv('SAW_SCORE'), 30)
 LINE_KILL_SCORE = toint(os.getenv('LINE_KILL_SCORE'), 50)
 SAW_KILL_SCORE = toint(os.getenv('SAW_KILL_SCORE'), 150)
 
+LR_HOST_NAME = os.getenv("LR_HOST_NAME", "127.0.0.1")
+LR_CLIENT_WAIT_TIMEOUT = toint("LR_CLIENT_WAIT_TIMEOUT", 10)
 LR_CLIENTS_MAX_COUNT = toint(os.getenv('LR_CLIENTS_MAX_COUNT'), 6)
 
 MAX_EXECUTION_TIME = toint(os.getenv('MAX_EXECUTION_TIME'), 120)
