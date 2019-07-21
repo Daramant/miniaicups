@@ -9,11 +9,9 @@ from helpers import TERRITORY_CACHE
 from clients import KeyboardClient, SimplePythonClient, FileClient, TcpClient
 from constants import LR_HOST_NAME, LR_CLIENT_WAIT_TIMEOUT, LR_CLIENTS_MAX_COUNT, MAX_TICK_COUNT
 from game_objects.scene import Scene
-from game_objects.game import LocalGame
+from game_objects.game import Game, LocalGame
 
-scene = Scene()
-loop = events.new_event_loop()
-events.set_event_loop(loop)
+
 
 parser = argparse.ArgumentParser(description='LocalRunner for paperio')
 
@@ -25,11 +23,16 @@ for i in range(1, LR_CLIENTS_MAX_COUNT + 1):
 parser.add_argument('-t', '--timeout', type=str, nargs='?', help='off/on timeout', default='on')
 parser.add_argument('-el', '--check_execution_limit', type=str, nargs='?', help='off/on check execution limit', default='on')
 parser.add_argument('-mtc', '--max_tick_count', type=int, nargs='?', help='Max tick count', default=1500)
+parser.add_argument('-c', '--console', type=str, nargs='?', help='on/off run as console without drawing game objects.', default='off')
 
 args = parser.parse_args()
 
 global MAX_TICK_COUNT
 MAX_TICK_COUNT = args.max_tick_count
+
+scene = Scene(visible=args.console == 'off')
+loop = events.new_event_loop()
+events.set_event_loop(loop)
 
 tcpClient = None
 async def handle_connection(reader, writer):
@@ -102,10 +105,18 @@ class Runner:
 
     @staticmethod
     def run_game():
-        Runner.game = LocalGame(clients, scene, args.timeout == 'on')
+        if args.console == 'off':
+            Runner.game = LocalGame(clients, scene, args.timeout == 'on')
+        else:
+            Runner.game = Game(clients)
+            
         Runner.game.send_game_start()
         pyglet.clock.schedule_interval(Runner.game_loop_wrapper, 1 / 200)
 
 
 Runner.run_game()
+
+if args.console == 'off':
+    scene.window.set_visible(False)
+    
 pyglet.app.run()

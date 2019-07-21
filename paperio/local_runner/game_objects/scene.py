@@ -15,11 +15,12 @@ class Scene:
 
     leaderboard_rows_count = 0
 
-    def __init__(self):
-        self.window = pyglet.window.Window(height=WINDOW_HEIGHT, width=WINDOW_WIDTH)
-        pyglet.gl.glClearColor(*self.background_color)
-        pyglet.gl.glEnable(pyglet.gl.GL_BLEND)
-        pyglet.gl.glBlendFunc(pyglet.gl.GL_SRC_ALPHA, pyglet.gl.GL_ONE_MINUS_SRC_ALPHA)
+    def __init__(self, visible):
+        self.window = pyglet.window.Window(height=WINDOW_HEIGHT, width=WINDOW_WIDTH, visible=visible)
+        if visible:
+            pyglet.gl.glClearColor(*self.background_color)
+            pyglet.gl.glEnable(pyglet.gl.GL_BLEND)
+            pyglet.gl.glBlendFunc(pyglet.gl.GL_SRC_ALPHA, pyglet.gl.GL_ONE_MINUS_SRC_ALPHA)
 
     def clear(self):
         self.window.clear()
