@@ -9,8 +9,8 @@ from pyglet.gl import *
 from pyglet.window import key
 
 from helpers import TERRITORY_CACHE, load_image
-from clients import KeyboardClient, SimplePythonClient, FileClient
-from constants import HOST_NAME, LR_CLIENT_WAIT_TIMEOUT, LR_CLIENTS_MAX_COUNT, MAX_TICK_COUNT, WINDOW_WIDTH, WINDOW_HEIGHT
+from clients import KeyboardClient, SimplePythonClient, FileClient, TcpClient
+from constants import LR_HOST_NAME, LR_CLIENT_WAIT_TIMEOUT, LR_CLIENTS_MAX_COUNT, MAX_TICK_COUNT, WINDOW_WIDTH, WINDOW_HEIGHT
 from game_objects.scene import Scene
 from game_objects.game import Game, LocalGame
 
@@ -84,7 +84,7 @@ for i in range(1, LR_CLIENTS_MAX_COUNT + 1):
 
 if len(clients) == 0:
     clients.append(KeyboardClient(scene.window))
-    
+
 class Runner:
     @staticmethod
     def game_over_loop(dt):
@@ -152,7 +152,7 @@ class Runner:
 
 Runner.run_game()
 
-if args.console == 'off':
+if args.console == 'on':
     scene.window.set_visible(False)
     
 pyglet.app.run()
