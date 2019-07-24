@@ -1,5 +1,7 @@
 import os
+import asyncio
 import json
+import copy
 import gzip
 import random
 
@@ -12,7 +14,6 @@ from game_objects.bonuses import Nitro, Slowdown, Bonus, Saw
 
 
 class Game:
-    border_color = (144, 163, 174, 255)
     available_bonuses = [b for b in [Nitro, Slowdown, Saw] if b.visio_name in AVAILABLE_BONUSES]
 
     RESULT_LOCATION = os.environ.get('GAME_LOG_LOCATION', './result')
@@ -105,9 +106,9 @@ class Game:
             is_loss = True
 
         for p in players:
-            if (p.x, p.y) in player.lines:
+            if (p.x, p.y) in player.lines[:-1]:
                 if p != player:
-                    p.score += LINE_KILL_SCORE
+                    p.tick_score += LINE_KILL_SCORE
                 is_loss = True
 
         for p in players:
@@ -161,7 +162,6 @@ class Game:
         self.send_game_start()
         while True:
             is_game_over = await self.game_loop(*args, **kwargs)
-            print('tick: {}'.format(self.tick))
             if is_game_over or self.tick >= MAX_TICK_COUNT:
                 self.send_game_end()
                 self.game_save()
@@ -178,23 +178,34 @@ class Game:
     def get_bonuses_states(self):
         return [b.get_state() for b in self.bonuses]
 
+    def collision_resolution(self, players_to_captured):
+        p_to_c = {p: c for p, c in players_to_captured.items() if not p.is_ate(players_to_captured)}
+        res = {p: copy.copy(c) for p, c in p_to_c.items()}
+        for p1, captured1 in p_to_c.items():
+            for p2, captured2 in p_to_c.items():
+                if p1 != p2:
+                    res[p1].difference_update(captured2)
+        return res
+
+    async def get_command_wrapper(self, player):
+        command = await player.get_command(self.tick)
+        if command:
+            player.change_direction(command)
+
     async def game_loop(self, *args, **kwargs):
         self.send_game_tick()
 
+        futures = []
         for player in self.players:
             if (player.x - round(WIDTH / 2)) % WIDTH == 0 and (player.y - round(WIDTH / 2)) % WIDTH == 0:
-                command = await player.get_command(self.tick)
-                if command:
-                    player.change_direction(command)
+                futures.append(asyncio.ensure_future(self.get_command_wrapper(player)))
+        if futures:
+            await asyncio.wait(futures)
 
         for player in self.players:
             player.move()
 
-        for index, player in enumerate(self.players):
-            is_loss = self.check_loss(player, self.players)
-            if is_loss:
-                self.losers.append(self.players[index])
-
+        players_to_captured = {}
         for player in self.players:
             player.remove_saw_bonus()
 
@@ -202,9 +213,26 @@ class Game:
                 player.update_lines()
 
                 captured = player.territory.capture(player.lines)
+                players_to_captured[player] = captured
                 if len(captured) > 0:
                     player.lines.clear()
-                    player.score += NEUTRAL_TERRITORY_SCORE * len(captured)
+                    player.tick_score += NEUTRAL_TERRITORY_SCORE * len(captured)
+
+        for player in self.players:
+            is_loss = self.check_loss(player, self.players)
+            if is_loss:
+                self.losers.append(player)
+
+        players_to_captured = self.collision_resolution(players_to_captured)
+
+        for player in self.players:
+            is_loss = player.is_ate(players_to_captured)
+            if is_loss:
+                self.losers.append(player)
+
+        for player in self.players:
+            if (player.x - round(WIDTH / 2)) % WIDTH == 0 and (player.y - round(WIDTH / 2)) % WIDTH == 0:
+                captured = players_to_captured.get(player, set())
 
                 player.tick_action()
 
@@ -225,11 +253,11 @@ class Game:
                                             'loser': p.id,
                                             'killed': True
                                         })
-                                        player.score += SAW_KILL_SCORE
+                                        player.tick_score += SAW_KILL_SCORE
                                     else:
                                         removed = p.territory.split(line, player.direction, p)
                                         if len(removed) > 0:
-                                            player.score += SAW_SCORE
+                                            player.tick_score += SAW_SCORE
                                             Saw.append_territory(removed, p.territory.color)
                                             Saw.log.append({
                                                 'player': player.id,
@@ -237,14 +265,20 @@ class Game:
                                                 'points': removed,
                                                 'killed': False
                                             })
-                for p in self.players:
-                    if p != player:
-                        removed = p.territory.remove_points(captured)
-                        player.score += (ENEMY_TERRITORY_SCORE - NEUTRAL_TERRITORY_SCORE) * len(removed)
+                if captured:
+                    player.territory.points.update(captured)
+                    for p in self.players:
+                        if p != player:
+                            removed = p.territory.remove_points(captured)
+                            player.tick_score += (ENEMY_TERRITORY_SCORE - NEUTRAL_TERRITORY_SCORE) * len(removed)
 
         for player in self.losers:
             if player in self.players:
                 self.players.remove(player)
+
+        for player in self.players:
+            player.score += player.tick_score
+            player.tick_score = 0
 
         self.generate_bonus()
 
@@ -252,7 +286,7 @@ class Game:
         return len(self.players) == 0
 
     def save_scores(self):
-        d = {p.client.get_solution_id(): p.score for p in self.losers}
+        d = {p.client.get_solution_id(): p.score for p in self.losers + self.players}
 
         with open(self.SCORES_LOCATION, 'w') as f:
             f.write(json.dumps(d))
@@ -281,7 +315,7 @@ class Game:
 
     def save_debug(self):
         return [
-            p.save_log(self.DEBUG_LOCATION) for p in self.losers
+            p.save_log(self.DEBUG_LOCATION) for p in self.losers + self.players
         ]
 
     def game_save(self):
@@ -296,26 +330,24 @@ class Game:
 
 
 class LocalGame(Game):
-    border_color = (144, 163, 174, 255)
-
     def __init__(self, clients, scene, timeout):
         super().__init__(clients)
         self.scene = scene
         self.timeout = timeout
 
-    def show_bonuses(self):
+    def append_bonuses_to_leaderboard(self):
         for player in self.players:
             if len(player.bonuses) > 0:
                 for bonus in player.bonuses:
                     label = '{} - {} - {}'.format(player.name, bonus.name, bonus.get_remaining_ticks())
                     self.scene.append_label_to_leaderboard(label, player.color)
 
-    def show_losers(self):
+    def append_losers_to_leaderboard(self):
         for player in self.losers:
             label = '{} выбыл, результат: {}'.format(player.name, player.score)
             self.scene.append_label_to_leaderboard(label, player.color)
 
-    def show_score(self):
+    def append_scores_to_leaderboard(self):
         for player in self.players:
             label = '{} результат: {}'.format(player.name, player.score)
             self.scene.append_label_to_leaderboard(label, player.color)
@@ -323,6 +355,12 @@ class LocalGame(Game):
     def draw_bonuses(self):
         for bonus in self.bonuses:
             bonus.draw()
+
+    def draw_leaderboard(self):
+        self.append_losers_to_leaderboard()
+        self.append_scores_to_leaderboard()
+        self.append_bonuses_to_leaderboard()
+        self.scene.draw_leaderboard()
 
     def draw(self):
         for player in self.players:
@@ -337,18 +375,15 @@ class LocalGame(Game):
         for player in self.players:
             player.draw_position()
 
+        self.scene.draw_border()
+        self.draw_bonuses()
+        # self.scene.draw_grid()
+        self.draw_leaderboard()
+
         if len(self.players) == 0:
             self.scene.show_game_over()
         elif self.timeout and self.tick >= MAX_TICK_COUNT:
             self.scene.show_game_over(timeout=True)
-
-        self.draw_bonuses()
-
-        self.scene.draw_leaderboard()
-        self.show_losers()
-        self.show_score()
-        self.show_bonuses()
-        self.scene.reset_leaderboard()
 
     async def game_loop(self, *args, **kwargs):
         self.scene.clear()
