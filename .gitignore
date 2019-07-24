@@ -3,3 +3,8 @@
 *.pro.user.*
 *.pyc
 .idea/workspace.xml
+/paperio/local_runner/*.project
+/paperio/local_runner/.pydevproject
+/paperio/local_runner/*.gz
+/paperio/local_runner/result
+/paperio/local_runner/scores.json
