@@ -183,10 +183,16 @@ class TcpClient(Client):
         return bool(self.solution_id)
 
     def send_message(self, t, d):
+        
+        if self.check_execution_limit:
+            time_left = round((self.execution_limit-self.execution_time).total_seconds()*1000)
+        else:
+            time_left = 100000
+            
         msg = {
             'type': t,
             'params': d,
-            'time_left': round((self.EXECUTION_LIMIT-self.execution_time).total_seconds()*1000)
+            'time_left': time_left
         }
         msg_bytes = '{}\n'.format(json.dumps(msg)).encode()
         self.writer.write(msg_bytes)

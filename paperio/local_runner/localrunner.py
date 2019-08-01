@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from asyncio import events
+import asyncio
 import argparse
 import os
 import gzip
@@ -15,17 +16,12 @@ from constants import LR_CLIENTS_MAX_COUNT, MAX_TICK_COUNT, WINDOW_WIDTH, WINDOW
 from game_objects.game import LocalGame, Game
 from game_objects.bonuses import Bonus
 
-
-loop = events.new_event_loop()
-events.set_event_loop(loop)
-
 parser = argparse.ArgumentParser(description='LocalRunner for paperio')
 
 for i in range(1, LR_CLIENTS_MAX_COUNT + 1):
-    parser.add_argument('-p{}'.format(i), '--player{}'.format(i), type=str, nargs='+',
-                        help='Path to executable with strategy for player {}'.format(i))
+    parser.add_argument('-p{}'.format(i), '--player{}'.format(i), type=str, nargs='+', help='Path to executable with strategy for player {}'.format(i))
     parser.add_argument('--p{}l'.format(i), type=str, nargs='?', help='Path to log for player {}'.format(i))
-
+    
 parser.add_argument('-t', '--timeout', type=str, nargs='?', help='off/on timeout', default='on')
 parser.add_argument('-s', '--scale', type=int, nargs='?', help='window scale (%%)', default=100)
 parser.add_argument('-el', '--check_execution_limit', type=str, nargs='?', help='off/on check execution limit', default='on')
@@ -39,6 +35,9 @@ args = parser.parse_args()
 
 global MAX_TICK_COUNT
 MAX_TICK_COUNT = args.max_tick_count
+
+loop = events.new_event_loop()
+events.set_event_loop(loop)
 
 tcpClient = None
 async def handle_connection(reader, writer):
@@ -68,7 +67,7 @@ if not args.no_gui:
     from pyglet.gl import *
     from pyglet.window import key
     from game_objects.scene import Scene
-    scene = Scene(args.scale)
+    scene = Scene(args.scale, visible=args.console == 'off')
 
 if args.rewind_viewer:
     from RewindClient import RewindClient
